@@ -1,0 +1,94 @@
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Create users table
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  username VARCHAR(50) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  full_name VARCHAR(100) NOT NULL,
+  email VARCHAR(100) UNIQUE,
+  phone_number VARCHAR(20),
+  role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'manager', 'kasir')),
+  status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+  avatar_url TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  last_login_at TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
+
+-- Create permissions table
+CREATE TABLE IF NOT EXISTS permissions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name VARCHAR(50) UNIQUE NOT NULL,
+  description TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create role_permissions table
+CREATE TABLE IF NOT EXISTS role_permissions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  role VARCHAR(20) NOT NULL,
+  permission_id UUID REFERENCES permissions(id) ON DELETE CASCADE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(role, permission_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_role_permissions_role ON role_permissions(role);
+
+-- Create user_permissions table (untuk custom permissions per user)
+CREATE TABLE IF NOT EXISTS user_permissions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  permission_id UUID REFERENCES permissions(id) ON DELETE CASCADE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, permission_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_permissions_user_id ON user_permissions(user_id);
+
+-- Insert default permissions
+INSERT INTO permissions (name, description) VALUES
+  ('dashboard', 'Akses ke halaman dashboard'),
+  ('kasir', 'Akses ke halaman kasir/transaksi'),
+  ('laporan', 'Akses ke halaman laporan'),
+  ('produk', 'Akses ke halaman produk'),
+  ('customer', 'Akses ke halaman customer'),
+  ('setting', 'Akses ke halaman pengaturan')
+ON CONFLICT (name) DO NOTHING;
+
+-- Insert default role permissions
+-- Admin: all permissions
+INSERT INTO role_permissions (role, permission_id)
+SELECT 'admin', id FROM permissions
+ON CONFLICT (role, permission_id) DO NOTHING;
+
+-- Manager: dashboard, laporan, produk, kasir, customer
+INSERT INTO role_permissions (role, permission_id)
+SELECT 'manager', id FROM permissions WHERE name IN ('dashboard', 'laporan', 'produk', 'kasir', 'customer')
+ON CONFLICT (role, permission_id) DO NOTHING;
+
+-- Kasir: kasir, laporan, produk, customer (no dashboard, no setting)
+INSERT INTO role_permissions (role, permission_id)
+SELECT 'kasir', id FROM permissions WHERE name IN ('kasir', 'laporan', 'produk', 'customer')
+ON CONFLICT (role, permission_id) DO NOTHING;
+
+-- Insert default admin user
+-- Username: admin
+-- Password: admin123
+INSERT INTO users (username, password_hash, full_name, role)
+VALUES (
+  'admin',
+  '$2a$12$aqWEJljKDh58zO14srphTuQ6as/BQjqJLHLRo6IQvBiHYR3N7FciC',
+  'Administrator',
+  'admin'
+)
+ON CONFLICT (username) DO NOTHING;
+
+COMMENT ON TABLE users IS 'Tabel pengguna sistem dengan RBAC';
+COMMENT ON TABLE permissions IS 'Tabel permission untuk RBAC';
+COMMENT ON TABLE role_permissions IS 'Mapping role ke permission';

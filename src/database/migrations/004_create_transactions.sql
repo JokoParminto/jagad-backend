@@ -1,0 +1,74 @@
+-- Migration 004: Create Transactions Tables
+-- Description: Create tables for transaction management
+
+-- Create Transactions Table
+CREATE TABLE IF NOT EXISTS transactions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  transaction_number VARCHAR(50) UNIQUE NOT NULL,
+  customer_id UUID REFERENCES customers(id) ON DELETE SET NULL,
+  cashier_id UUID REFERENCES users(id) ON DELETE SET NULL,
+
+  subtotal DECIMAL(15,2) NOT NULL DEFAULT 0,
+  discount_items DECIMAL(15,2) DEFAULT 0,
+  discount_global DECIMAL(15,2) DEFAULT 0,
+  discount_global_type VARCHAR(20) DEFAULT 'amount' CHECK (discount_global_type IN ('amount', 'percentage')),
+  total DECIMAL(15,2) NOT NULL,
+
+  payment_method VARCHAR(50) NOT NULL DEFAULT 'cash',
+  payment_details JSONB,
+  amount_paid DECIMAL(15,2) DEFAULT 0,
+  change_amount DECIMAL(15,2) DEFAULT 0,
+
+  status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'completed', 'cancelled')),
+  notes TEXT,
+
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  completed_at TIMESTAMP
+);
+
+-- Create indexes for transactions
+CREATE INDEX IF NOT EXISTS idx_transactions_number ON transactions(transaction_number);
+CREATE INDEX IF NOT EXISTS idx_transactions_customer ON transactions(customer_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_cashier ON transactions(cashier_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status);
+CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(created_at);
+CREATE INDEX IF NOT EXISTS idx_transactions_completed ON transactions(completed_at);
+
+-- Create trigger for updated_at on transactions
+CREATE OR REPLACE FUNCTION update_transactions_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = CURRENT_TIMESTAMP;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_transactions_updated_at ON transactions;
+CREATE TRIGGER trigger_transactions_updated_at BEFORE UPDATE ON transactions
+FOR EACH ROW
+EXECUTE FUNCTION update_transactions_updated_at();
+
+-- Create Transaction Items Table
+CREATE TABLE IF NOT EXISTS transaction_items (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  transaction_id UUID REFERENCES transactions(id) ON DELETE CASCADE,
+  product_id UUID REFERENCES products(id) ON DELETE SET NULL,
+
+  product_name VARCHAR(200) NOT NULL,
+  product_price DECIMAL(15,2) NOT NULL,
+  quantity INTEGER NOT NULL DEFAULT 1,
+
+  discount_amount DECIMAL(15,2) DEFAULT 0,
+  discount_type VARCHAR(20) DEFAULT 'amount' CHECK (discount_type IN ('amount', 'percentage')),
+
+  subtotal DECIMAL(15,2) NOT NULL,
+  total DECIMAL(15,2) NOT NULL,
+
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create indexes for transaction_items
+CREATE INDEX IF NOT EXISTS idx_transaction_items_transaction ON transaction_items(transaction_id);
+CREATE INDEX IF NOT EXISTS idx_transaction_items_product ON transaction_items(product_id);

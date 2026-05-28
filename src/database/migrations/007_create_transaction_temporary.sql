@@ -1,0 +1,66 @@
+-- Migration 007: Create Transaction Temporary Tables for Hold Orders
+-- Description: Create tables for storing held orders temporarily
+
+-- Create Transaction Temporary Table (same as transactions but without transaction_number and status)
+CREATE TABLE IF NOT EXISTS transaction_temporary (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  cashier_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  customer_id UUID REFERENCES customers(id) ON DELETE SET NULL,
+
+  subtotal DECIMAL(15,2) NOT NULL DEFAULT 0,
+  discount_items DECIMAL(15,2) DEFAULT 0,
+  discount_global DECIMAL(15,2) DEFAULT 0,
+  discount_global_type VARCHAR(20) DEFAULT 'amount' CHECK (discount_global_type IN ('amount', 'percentage')),
+  total DECIMAL(15,2) NOT NULL,
+
+  payment_method VARCHAR(50) NOT NULL DEFAULT 'cash',
+  payment_details JSONB,
+
+  notes TEXT,
+
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create indexes for transaction_temporary
+CREATE INDEX IF NOT EXISTS idx_transaction_temporary_cashier ON transaction_temporary(cashier_id);
+CREATE INDEX IF NOT EXISTS idx_transaction_temporary_customer ON transaction_temporary(customer_id);
+CREATE INDEX IF NOT EXISTS idx_transaction_temporary_date ON transaction_temporary(created_at);
+
+-- Create trigger for updated_at on transaction_temporary
+CREATE OR REPLACE FUNCTION update_transaction_temporary_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = CURRENT_TIMESTAMP;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_transaction_temporary_updated_at ON transaction_temporary;
+CREATE TRIGGER trigger_transaction_temporary_updated_at BEFORE UPDATE ON transaction_temporary
+FOR EACH ROW
+EXECUTE FUNCTION update_transaction_temporary_updated_at();
+
+-- Create Transaction Items Temporary Table
+CREATE TABLE IF NOT EXISTS transaction_item_temporary (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  transaction_temporary_id UUID REFERENCES transaction_temporary(id) ON DELETE CASCADE,
+  product_id UUID REFERENCES products(id) ON DELETE SET NULL,
+
+  product_name VARCHAR(200) NOT NULL,
+  product_price DECIMAL(15,2) NOT NULL,
+  quantity INTEGER NOT NULL DEFAULT 1,
+
+  discount_amount DECIMAL(15,2) DEFAULT 0,
+  discount_type VARCHAR(20) DEFAULT 'amount' CHECK (discount_type IN ('amount', 'percentage')),
+
+  subtotal DECIMAL(15,2) NOT NULL,
+  total DECIMAL(15,2) NOT NULL,
+
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create indexes for transaction_item_temporary
+CREATE INDEX IF NOT EXISTS idx_transaction_item_temporary_transaction ON transaction_item_temporary(transaction_temporary_id);
+CREATE INDEX IF NOT EXISTS idx_transaction_item_temporary_product ON transaction_item_temporary(product_id);

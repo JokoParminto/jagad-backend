@@ -1,0 +1,58 @@
+# Dependencies
+node_modules
+npm-debug.log
+yarn.lock
+package-lock.json
+
+# Build output
+dist
+build
+
+# Environment variables (don't include in image)
+.env
+.env.local
+.env.*.local
+.env.docker
+.env.production
+
+# Logs
+logs
+*.log
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Editor
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage
+.nyc_output
+*.test.js
+__tests__
+
+# Misc
+uploads
+temp
+.pnp
+.yarn
+.pnp.js
+
+# Documentation
+README.md
+*.md
+CHANGELOG.md
+LICENSE
+
+# CI/CD
+.github
+.gitlab-ci.yml
+.circleci
