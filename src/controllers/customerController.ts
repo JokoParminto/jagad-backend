@@ -133,24 +133,25 @@ export const createCustomer = async (
     const normalizedAvatarUrl = avatarUrl || avatarCamel || ''
     const normalizedIsMember = isMember !== undefined ? isMember : (isMemberCamel !== undefined ? isMemberCamel : is_member_raw ?? false)
 
-    // Validation
-    if (!name || !normalizedPhoneNumber) {
-      throw new AppError('VALIDATION_ERROR', 'Nama dan nomor telepon harus diisi', 400)
+    // Validation — only name is required, phone is optional
+    if (!name) {
+      throw new AppError('VALIDATION_ERROR', 'Nama harus diisi', 400)
     }
 
-    // Validate phone number format (only digits)
-    if (!/^\d+$/.test(normalizedPhoneNumber)) {
-      throw new AppError('VALIDATION_ERROR', 'Nomor telepon hanya boleh berisi angka', 400)
-    }
+    // Validate and check phone number only if provided
+    if (normalizedPhoneNumber) {
+      if (!/^\d+$/.test(normalizedPhoneNumber)) {
+        throw new AppError('VALIDATION_ERROR', 'Nomor telepon hanya boleh berisi angka', 400)
+      }
 
-    // Check if phone number already exists
-    const existingCustomer = await pool.query(
-      'SELECT id FROM customers WHERE phone_number = $1',
-      [normalizedPhoneNumber]
-    )
+      const existingCustomer = await pool.query(
+        'SELECT id FROM customers WHERE phone_number = $1',
+        [normalizedPhoneNumber]
+      )
 
-    if (existingCustomer.rows.length > 0) {
-      throw new AppError('VALIDATION_ERROR', 'Nomor telepon sudah terdaftar', 400)
+      if (existingCustomer.rows.length > 0) {
+        throw new AppError('VALIDATION_ERROR', 'Nomor telepon sudah terdaftar', 400)
+      }
     }
 
     // Check if email already exists
@@ -169,7 +170,7 @@ export const createCustomer = async (
       `INSERT INTO customers (name, phone_number, email, avatar_url, is_member)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [name, normalizedPhoneNumber, email, normalizedAvatarUrl, normalizedIsMember]
+      [name, normalizedPhoneNumber || null, email || null, normalizedAvatarUrl, normalizedIsMember]
     )
 
     res.json(successResponse(result.rows[0], 'Customer berhasil dibuat'))

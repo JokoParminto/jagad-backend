@@ -387,6 +387,7 @@ export const heldOrderController = {
         discount_global,
         discount_global_type,
         total,
+        version,
         items,
       } = req.body;
 
@@ -396,7 +397,7 @@ export const heldOrderController = {
 
         // Update main transaction (only if not partially paid)
         const txnCheck = await client.query(
-          "SELECT status FROM transactions WHERE id = $1",
+          "SELECT status, updated_at FROM transactions WHERE id = $1",
           [id],
         );
 
@@ -410,6 +411,20 @@ export const heldOrderController = {
             "Cannot update held order that has been partially paid",
             400,
           );
+        }
+
+        // Optimistic locking: reject if another session modified the order
+        if (version) {
+          const dbUpdatedAt = new Date(txnCheck.rows[0].updated_at).getTime();
+          const clientVersion = new Date(version).getTime();
+          // Only reject if clientVersion is a valid date AND timestamps differ
+          if (!isNaN(clientVersion) && dbUpdatedAt !== clientVersion) {
+            throw new AppError(
+              "CONFLICT",
+              "Order ini sudah diubah oleh kasir lain. Silakan muat ulang.",
+              409,
+            );
+          }
         }
 
         let customerIsMember = false;

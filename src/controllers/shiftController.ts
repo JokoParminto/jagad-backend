@@ -306,9 +306,12 @@ export const closeShift = async (
     const qrisIncome = parseFloat(qrisIncomeResult.rows[0]?.total) || 0;
     const totalExpenses = parseFloat(expensesResult.rows[0]?.total) || 0;
     const modalAwal = parseFloat(shift.modal_awal) || 0;
-    const totalPosSales = modalAwal + totalSalesIncome;
-    const netIncome = totalPosSales - modalAwal;
-    const expectedCash = cashIncome;
+
+    // Pendapatan bersih = penjualan - belanja (tidak termasuk modal awal)
+    const netIncome = totalSalesIncome - totalExpenses;
+
+    // Total posisi kas = modal awal + penjualan tunai - belanja
+    const expectedCash = modalAwal + cashIncome - totalExpenses;
     const selisih = actualCashValue - expectedCash;
 
     const shopeeFoodAmount = parseFloat(shopee_food_amount) || 0;
@@ -361,7 +364,7 @@ export const closeShift = async (
         cashIncome,
         qrisIncome,
         totalExpenses,
-        totalPosSales,
+        modalAwal + totalSalesIncome,  // total_pos_sales = modal + penjualan (posisi kas sebelum belanja)
         shopeeFoodAmount,
         shopeeFoodDiscountPercent,
         shopeeFoodDiscountNominal,
@@ -381,7 +384,8 @@ export const closeShift = async (
       cash_income: cashIncome,
       qris_income: qrisIncome,
       total_expenses: totalExpenses,
-      total_pos_sales: totalPosSales,
+      pendapatan_shift: netIncome,          // penjualan - belanja
+      total_kas: expectedCash,              // modal + cash_income - belanja (expected cash in drawer)
       net_income: netIncome,
       shopee_food_amount: shopeeFoodAmount,
       shopee_food_discount_percent: shopeeFoodDiscountPercent,
@@ -469,8 +473,11 @@ export const getShiftSummary = async (
     const cashIncome = parseFloat(cashIncomeResult.rows[0]?.total) || 0;
     const qrisIncome = parseFloat(qrisIncomeResult.rows[0]?.total) || 0;
     const totalExpenses = parseFloat(expensesResult.rows[0]?.total) || 0;
-    const totalPosSales = modal + totalSalesIncome;
-    const netIncome = totalPosSales - modal;
+
+    // Pendapatan bersih = penjualan - belanja (tidak termasuk modal awal)
+    const netIncome = totalSalesIncome - totalExpenses;
+    // Total kas yang seharusnya ada = modal + penjualan cash - belanja
+    const expectedCash = modal + cashIncome - totalExpenses;
 
     const summary = {
       shift,
@@ -479,7 +486,8 @@ export const getShiftSummary = async (
       cash_income: cashIncome,
       qris_income: qrisIncome,
       total_expenses: totalExpenses,
-      total_pos_sales: totalPosSales,
+      pendapatan_shift: netIncome,
+      total_kas: expectedCash,
       net_income: netIncome,
     };
 
@@ -776,8 +784,10 @@ export const getShiftIncome = async (
     const totalPenjualan = parseFloat(totalPenjualanResult.rows[0]?.total) || 0;
     const totalBelanja = parseFloat(totalBelanjaResult.rows[0]?.total) || 0;
 
-    // Calculate pendapatan shift
-    const pendapatanShift = modalAwal + totalPenjualan - totalBelanja;
+    // Pendapatan shift = revenue earned during shift (penjualan - belanja)
+    // Total kas = modal_awal + pendapatan_shift (posisi uang di laci)
+    const pendapatanShift = totalPenjualan - totalBelanja;
+    const totalKas = modalAwal + pendapatanShift;
 
     const result = {
       shift_id: id,
@@ -785,6 +795,7 @@ export const getShiftIncome = async (
       total_penjualan: totalPenjualan,
       total_belanja: totalBelanja,
       pendapatan_shift: pendapatanShift,
+      total_kas: totalKas,
     };
 
     console.log("[getShiftIncome] Income calculated:", result);

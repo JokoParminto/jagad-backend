@@ -1777,6 +1777,15 @@ export const checkout = async (
       }
 
       const qty = parseInt(item.quantity) || 1;
+      const availableStock = parseInt(productResult.rows[0].stock) || 0;
+
+      if (availableStock < qty) {
+        throw new AppError(
+          "OUT_OF_STOCK",
+          `Stok ${item.product_name} tidak cukup. Stok tersisa: ${availableStock}`,
+          400,
+        );
+      }
 
       // Calculate member pricing
       const memberPricing = await calculateMemberPricing(
