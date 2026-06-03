@@ -27,6 +27,12 @@ router.post('/draft', transactionController.createDraftTransaction)
 router.get('/reports/by-shift', transactionController.getReportsByShift)
 
 /**
+ * Get top selling products (must be before /:id)
+ * GET /transactions/stats/top-products?shift_id=&limit=5
+ */
+router.get('/stats/top-products', transactionController.getTopProducts)
+
+/**
  * Checkout - Create and complete transaction in one step
  * POST /transactions/checkout
  */

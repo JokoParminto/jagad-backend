@@ -341,6 +341,25 @@ export const syncPreviewContent = async (printerId: string): Promise<PrinterTemp
       if (syncedPreviewContent.sections?.footer) {
         syncedPreviewContent.sections.footer.footer_text = footerConfig.footer_text || syncedPreviewContent.sections.footer.footer_text
       }
+
+      // Sync store_info overrides (nama toko, alamat, logo, tagline)
+      const storeInfo = (template.content as any).sections?.store_info
+      if (storeInfo && syncedPreviewContent.sections?.header && Array.isArray(syncedPreviewContent.sections.header)) {
+        syncedPreviewContent.sections.header = syncedPreviewContent.sections.header.map((field: any) => {
+          if (field.store_name !== undefined && storeInfo.store_name)
+            return { ...field, store_name: storeInfo.store_name }
+          if (field.store_address !== undefined && storeInfo.store_address)
+            return { ...field, store_address: storeInfo.store_address }
+          if (field.store_phone !== undefined && storeInfo.store_phone)
+            return { ...field, store_phone: storeInfo.store_phone }
+          if (field.logo !== undefined && storeInfo.logo_url)
+            return { ...field, logo: storeInfo.logo_url }
+          return field
+        })
+        if (storeInfo.footer_text && syncedPreviewContent.sections?.footer) {
+          syncedPreviewContent.sections.footer.footer_text = storeInfo.footer_text
+        }
+      }
     }
     // For Barista template
     else if (template.template_type === 'barista') {
@@ -377,6 +396,18 @@ export const syncPreviewContent = async (printerId: string): Promise<PrinterTemp
       if (syncedPreviewContent.sections?.footer) {
         syncedPreviewContent.sections.footer.show_preparation_reminder = footerConfig.show_preparation_reminder !== false
         syncedPreviewContent.sections.footer.preparation_text = footerConfig.preparation_text || syncedPreviewContent.sections.footer.preparation_text
+      }
+
+      // Sync store_info for barista too
+      const baristaStoreInfo = (template.content as any).sections?.store_info
+      if (baristaStoreInfo && syncedPreviewContent.sections?.header && Array.isArray(syncedPreviewContent.sections.header)) {
+        syncedPreviewContent.sections.header = syncedPreviewContent.sections.header.map((field: any) => {
+          if (field.store_name !== undefined && baristaStoreInfo.store_name)
+            return { ...field, store_name: baristaStoreInfo.store_name }
+          if (field.logo !== undefined && baristaStoreInfo.logo_url)
+            return { ...field, logo: baristaStoreInfo.logo_url }
+          return field
+        })
       }
     }
 

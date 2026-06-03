@@ -12,9 +12,10 @@ if (!fs.existsSync(uploadDir)) {
 // Create subdirectories for different types
 const productDir = path.join(uploadDir, 'products')
 const avatarDir = path.join(uploadDir, 'avatars')
+const logoDir = path.join(uploadDir, 'logos')
 const tempDir = path.join(uploadDir, 'temp')
 
-;[productDir, avatarDir, tempDir].forEach(dir => {
+;[productDir, avatarDir, logoDir, tempDir].forEach(dir => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true })
   }
@@ -32,6 +33,9 @@ const storage = multer.diskStorage({
         break
       case 'avatar':
         destPath = avatarDir
+        break
+      case 'logo':
+        destPath = logoDir
         break
       default:
         destPath = tempDir
@@ -78,5 +82,6 @@ export const upload = multer({
 export const uploadDirs = {
   products: productDir,
   avatars: avatarDir,
+  logos: logoDir,
   temp: tempDir,
 }

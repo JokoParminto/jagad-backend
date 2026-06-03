@@ -1547,8 +1547,16 @@ export const getTransactions = async (
     let paramIndex = 1;
 
     if (status) {
-      conditions.push(`t.status = $${paramIndex++}`);
-      params.push(status);
+      const statusList = String(status).split(',').map((s: string) => s.trim()).filter(Boolean);
+      if (statusList.length > 1) {
+        const placeholders = statusList.map((_: string, i: number) => `$${paramIndex + i}`).join(', ');
+        conditions.push(`t.status IN (${placeholders})`);
+        params.push(...statusList);
+        paramIndex += statusList.length;
+      } else {
+        conditions.push(`t.status = $${paramIndex++}`);
+        params.push(status);
+      }
     }
 
     if (customer_id) {
@@ -2088,14 +2096,24 @@ export const getReportsByShift = async (
         s.closed_at,
         s.status,
         COUNT(t.id) as transaction_count,
-        COALESCE(SUM(CASE WHEN t.status = 'completed' THEN t.total ELSE 0 END), 0) as total_sales,
+        COALESCE(SUM(CASE WHEN t.status IN ('paid', 'completed') THEN t.total ELSE 0 END), 0) as total_sales,
+        COALESCE(SUM(CASE WHEN t.status IN ('paid', 'completed') THEN COALESCE(t.discount_items, 0) + COALESCE(t.discount_global, 0) ELSE 0 END), 0) as total_discount,
         COALESCE(
           (SELECT SUM(COALESCE(jumlah, 0)) FROM shift_expenses WHERE shift_id = s.id),
           0
-        ) as total_expenses
+        ) as total_expenses,
+        COALESCE(SUM(CASE WHEN t.status IN ('paid', 'completed') THEN t.total ELSE 0 END), 0) -
+        COALESCE(
+          (SELECT SUM(ti.quantity * COALESCE(p.hpp, 0))
+           FROM transaction_items ti
+           LEFT JOIN products p ON ti.product_id = p.id
+           JOIN transactions t2 ON ti.transaction_id = t2.id
+           WHERE t2.shift_id = s.id AND t2.status IN ('paid', 'completed')
+          ), 0
+        ) as total_netto
       FROM shifts s
       LEFT JOIN users u ON s.cashier_id = u.id
-      LEFT JOIN transactions t ON s.id = t.shift_id AND t.status = 'completed'
+      LEFT JOIN transactions t ON s.id = t.shift_id AND t.status IN ('paid', 'completed')
       WHERE 1=1
     `;
 
@@ -2139,6 +2157,63 @@ export const getReportsByShift = async (
     next(error);
   }
 };
+
+/**
+ * GET /api/v1/transactions/stats/top-products
+ * Top selling products for a given shift or date (today by default)
+ */
+export const getTopProducts = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { shift_id, limit = 5 } = req.query as any
+    const userId = req.user?.id
+    const userRole = req.user?.role
+
+    if (!userId) throw new AppError("UNAUTHORIZED", "User tidak terautentikasi", 401)
+
+    let shiftFilter = ''
+    const params: any[] = []
+    let paramIndex = 1
+
+    if (shift_id) {
+      shiftFilter = `AND t.shift_id = $${paramIndex++}`
+      params.push(shift_id)
+    } else {
+      shiftFilter = `AND DATE(t.completed_at) = CURRENT_DATE`
+    }
+
+    // Kasir only sees their own shifts
+    if (userRole === 'kasir') {
+      shiftFilter += ` AND t.cashier_id = $${paramIndex++}`
+      params.push(userId)
+    }
+
+    params.push(parseInt(limit))
+
+    const result = await pool.query(
+      `SELECT
+        ti.product_id,
+        ti.product_name,
+        SUM(ti.quantity)::int AS total_qty,
+        SUM(ti.total) AS total_revenue
+      FROM transaction_items ti
+      JOIN transactions t ON ti.transaction_id = t.id
+      WHERE t.status IN ('paid', 'completed')
+      ${shiftFilter}
+      GROUP BY ti.product_id, ti.product_name
+      ORDER BY total_qty DESC
+      LIMIT $${paramIndex}`,
+      params,
+    )
+
+    res.json(successResponse(result.rows, "Top produk berhasil diambil"))
+  } catch (error) {
+    next(error)
+  }
+}
 
 /**
  * Update transaction in active shift only
