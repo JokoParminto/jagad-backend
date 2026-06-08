@@ -3,6 +3,7 @@ import { pool } from "../config/database";
 import { successResponse } from "../utils/response";
 import { AppError } from "../middleware/errorHandler";
 import { isCustomerMember } from "../utils/transactionHelpers";
+import { enqueueHoldOrder, dequeueByRefId, syncHoldOrderQueue } from "./queueController";
 export const heldOrderController = {
   /**
    * Create a held order (transaction with status='open')
@@ -140,8 +141,29 @@ export const heldOrderController = {
 
         await client.query("COMMIT");
 
+        // Masukkan ke antrian barista setelah transaksi berhasil
+        const txRow = transactionResult.rows[0]
+        let customerName = 'Tanpa Nama'
+        if (customer_id) {
+          const custResult = await pool.query(
+            'SELECT name FROM customers WHERE id = $1', [customer_id]
+          )
+          if (custResult.rows.length > 0) customerName = custResult.rows[0].name
+        }
+        try {
+          await enqueueHoldOrder(
+            pool,
+            txRow.id,
+            txRow.transaction_number,
+            customerName,
+            items,
+          )
+        } catch (queueErr) {
+          console.error('[createHeldOrder] Failed to enqueue:', queueErr)
+        }
+
         const response = {
-          ...transactionResult.rows[0],
+          ...txRow,
           items: itemsData,
         };
 
@@ -367,6 +389,13 @@ export const heldOrderController = {
         ["cancelled", id],
       );
 
+      // Hapus dari antrian barista (jika ada)
+      try {
+        await dequeueByRefId(id)
+      } catch (queueErr) {
+        console.error('[deleteHeldOrder] Failed to dequeue:', queueErr)
+      }
+
       res.json(successResponse(null, "Held order cancelled successfully"));
     } catch (error) {
       next(error);
@@ -513,6 +542,23 @@ export const heldOrderController = {
         }
 
         await client.query("COMMIT");
+
+        // Sync antrian barista — merge item statuses (item baru → pending, lama → pertahankan)
+        try {
+          let customerNameForQueue = 'Tanpa Nama'
+          if (customer_id) {
+            const custRes = await pool.query('SELECT name FROM customers WHERE id = $1', [customer_id])
+            if (custRes.rows.length > 0) customerNameForQueue = custRes.rows[0].name
+          }
+
+          // Need transaction_number for queue sync
+          const txNumRes = await pool.query('SELECT transaction_number FROM transactions WHERE id = $1', [id])
+          const txNumber = txNumRes.rows[0]?.transaction_number || ''
+
+          await syncHoldOrderQueue(pool, id, txNumber, customerNameForQueue, items)
+        } catch (queueErr) {
+          console.error('[updateHeldOrder] Failed to sync queue:', queueErr)
+        }
 
         // Fetch updated order
         const result = await pool.query(

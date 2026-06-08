@@ -12,8 +12,12 @@ export const pool = new Pool({
   connectionTimeoutMillis: 2000,
 })
 
-pool.on('connect', () => {
-  console.log('✅ Database connection established')
+// Set timezone on every new pooled connection so CURRENT_TIMESTAMP, DATE(), etc.
+// all operate in Asia/Jakarta regardless of which pool connection is used.
+pool.on('connect', (client) => {
+  client.query("SET timezone = 'Asia/Jakarta'")
+    .then(() => console.log('✅ DB connection established (tz: Asia/Jakarta)'))
+    .catch((err: Error) => console.error('❌ Failed to set timezone on new connection:', err))
 })
 
 // Initialize timezone on database connection

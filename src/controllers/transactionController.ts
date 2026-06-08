@@ -11,6 +11,7 @@ import {
   calculateTotalMemberSavings,
   getPaymentMethodById,
 } from "../utils/transactionHelpers";
+import { enqueuePaidOrder, updateHoldToPaid } from "./queueController";
 
 /**
  * Generate transaction number (TRX-YYYYMMDD-XXXX)
@@ -1988,6 +1989,30 @@ export const checkout = async (
     }
 
     await client.query("COMMIT");
+
+    // Step 6.5: Masukkan ke antrian barista
+    // Jika checkout berasal dari hold order (held_order_id dikirim frontend),
+    // update entry yang sudah ada (preserve FIFO ordered_at).
+    // Jika checkout langsung (bukan dari hold), insert baru.
+    try {
+      const held_order_id = req.body.held_order_id
+      let customerNameForQueue = 'Tanpa Nama'
+      if (customer_id) {
+        const custRes = await pool.query('SELECT name FROM customers WHERE id = $1', [customer_id])
+        if (custRes.rows.length > 0) customerNameForQueue = custRes.rows[0].name
+      }
+      if (held_order_id) {
+        const updated = await updateHoldToPaid(pool, held_order_id, transactionId, transactionNumber)
+        if (!updated) {
+          // Hold entry not found, insert as paid (edge case)
+          await enqueuePaidOrder(pool, transactionId, transactionNumber, customerNameForQueue, items)
+        }
+      } else {
+        await enqueuePaidOrder(pool, transactionId, transactionNumber, customerNameForQueue, items)
+      }
+    } catch (queueErr) {
+      console.error('[checkout] Failed to update queue:', queueErr)
+    }
 
     // Step 7: Fetch complete transaction with items and add-ons
     const completeTransaction = await pool.query(

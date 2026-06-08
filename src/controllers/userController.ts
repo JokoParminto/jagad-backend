@@ -713,3 +713,46 @@ export const updateUserPermissions = async (
     next(error);
   }
 };
+
+/**
+ * Change own password (self-service)
+ * PATCH /api/v1/users/me/password
+ */
+export const changeMyPassword = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.user?.id;
+    const { current_password, new_password } = req.body;
+
+    if (!userId) throw new AppError("UNAUTHORIZED", "User tidak terautentikasi", 401);
+    if (!current_password || !new_password)
+      throw new AppError("VALIDATION_ERROR", "Password lama dan baru wajib diisi", 400);
+    if (new_password.length < 6)
+      throw new AppError("VALIDATION_ERROR", "Password baru minimal 6 karakter", 400);
+
+    // Verify current password
+    const userResult = await pool.query(
+      "SELECT password_hash FROM users WHERE id = $1",
+      [userId],
+    );
+    if (userResult.rows.length === 0)
+      throw new AppError("NOT_FOUND", "User tidak ditemukan", 404);
+
+    const isMatch = await bcrypt.compare(current_password, userResult.rows[0].password_hash);
+    if (!isMatch)
+      throw new AppError("VALIDATION_ERROR", "Password lama tidak sesuai", 400);
+
+    const passwordHash = await bcrypt.hash(new_password, 12);
+    await pool.query(
+      "UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
+      [passwordHash, userId],
+    );
+
+    res.json(successResponse(null, "Password berhasil diubah"));
+  } catch (error) {
+    next(error);
+  }
+};

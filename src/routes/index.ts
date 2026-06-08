@@ -13,6 +13,7 @@ import reportRoutes from './report.routes'
 import shiftRoutes from './shift.routes'
 import paymentMethodRoutes from './paymentMethod.routes'
 import printerRoutes from './printer.routes'
+import queueRoutes from './queue.routes'
 
 const router = Router()
 
@@ -31,5 +32,6 @@ router.use('/reports', reportRoutes)
 router.use('/shifts', shiftRoutes)
 router.use('/payment-methods', paymentMethodRoutes)
 router.use('/printers', printerRoutes)
+router.use('/queue', queueRoutes)
 
 export default router

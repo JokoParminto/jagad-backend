@@ -13,6 +13,7 @@ router.use(authenticate)
  * PATCH /users/me
  */
 router.patch('/me', userController.updateMyProfile)
+router.patch('/me/password', userController.changeMyPassword)
 
 /**
  * Get all users with filters

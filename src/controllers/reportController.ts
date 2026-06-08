@@ -2,6 +2,23 @@ import { Request, Response, NextFunction } from 'express'
 import { pool } from '../config/database'
 import { successResponse } from '../utils/response'
 
+// Data in DB is stored as UTC TIMESTAMP. Convert to Asia/Jakarta before extracting
+// date/hour so queries respect WIB boundaries (midnight WIB = 17:00 UTC previous day).
+const TX_DATE = `DATE((COALESCE(completed_at, paid_at, updated_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jakarta')`
+const TX_TS   = `(COALESCE(completed_at, paid_at, updated_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jakarta'`
+
+/** Returns today's date string in Asia/Jakarta (YYYY-MM-DD) */
+function jakartaToday(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' })
+}
+
+/** Returns 30 days ago in Asia/Jakarta (YYYY-MM-DD) */
+function jakarta30DaysAgo(): string {
+  const d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+  return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' })
+}
+
+
 /**
  * Get dashboard statistics
  * GET /api/v1/reports/dashboard
@@ -14,75 +31,68 @@ export const getDashboardStats = async (
   try {
     const { start_date, end_date } = req.query
 
-    // Default to today if no dates provided
-    const today = new Date().toISOString().split('T')[0]
+    const today = jakartaToday()
     const startDate = start_date || today
     const endDate = end_date || today
 
-    // Total sales
     const salesResult = await pool.query(
       `SELECT
         COUNT(*) as total_transactions,
         COALESCE(SUM(total), 0) as total_sales,
         COALESCE(AVG(total), 0) as average_sales
        FROM transactions
-       WHERE status = 'completed'
-       AND DATE(completed_at) BETWEEN $1 AND $2`,
+       WHERE status IN ('completed', 'paid')
+       AND ${TX_DATE} BETWEEN $1 AND $2`,
       [startDate, endDate]
     )
 
-    // Total customers
     const customersResult = await pool.query(
       `SELECT COUNT(DISTINCT customer_id) as total_customers
        FROM transactions
-       WHERE status = 'completed'
+       WHERE status IN ('completed', 'paid')
        AND customer_id IS NOT NULL
-       AND DATE(completed_at) BETWEEN $1 AND $2`,
+       AND ${TX_DATE} BETWEEN $1 AND $2`,
       [startDate, endDate]
     )
 
-    // Total products sold
     const productsResult = await pool.query(
       `SELECT COALESCE(SUM(ti.quantity), 0) as total_products_sold
        FROM transaction_items ti
        JOIN transactions t ON ti.transaction_id = t.id
-       WHERE t.status = 'completed'
-       AND DATE(t.completed_at) BETWEEN $1 AND $2`,
+       WHERE t.status IN ('completed', 'paid')
+       AND DATE((COALESCE(t.completed_at, t.paid_at, t.updated_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jakarta') BETWEEN $1 AND $2`,
       [startDate, endDate]
     )
 
-    // Low stock products count
     const lowStockResult = await pool.query(
       `SELECT COUNT(*) as low_stock_products
        FROM products
        WHERE stock < min_stock AND status = 'active'`
     )
 
-    // Payment methods breakdown
     const paymentMethodsResult = await pool.query(
       `SELECT
-        payment_method,
+        COALESCE(payment_method, 'Lainnya') as payment_method,
         COUNT(*) as count,
         COALESCE(SUM(total), 0) as total
        FROM transactions
-       WHERE status = 'completed'
-       AND DATE(completed_at) BETWEEN $1 AND $2
+       WHERE status IN ('completed', 'paid')
+       AND ${TX_DATE} BETWEEN $1 AND $2
        GROUP BY payment_method`,
       [startDate, endDate]
     )
 
-    // Hourly sales (for today only)
-    let hourlySales = []
+    let hourlySales: any[] = []
     if (startDate === endDate) {
       const hourlySalesResult = await pool.query(
         `SELECT
-          EXTRACT(HOUR FROM completed_at) as hour,
+          EXTRACT(HOUR FROM ${TX_TS}) as hour,
           COUNT(*) as transactions,
           COALESCE(SUM(total), 0) as sales
          FROM transactions
-         WHERE status = 'completed'
-         AND DATE(completed_at) = $1
-         GROUP BY EXTRACT(HOUR FROM completed_at)
+         WHERE status IN ('completed', 'paid')
+         AND ${TX_DATE} = $1
+         GROUP BY EXTRACT(HOUR FROM ${TX_TS})
          ORDER BY hour`,
         [startDate]
       )
@@ -90,10 +100,7 @@ export const getDashboardStats = async (
     }
 
     res.json(successResponse({
-      period: {
-        start_date: startDate,
-        end_date: endDate
-      },
+      period: { start_date: startDate, end_date: endDate },
       sales: {
         total_transactions: parseInt(salesResult.rows[0].total_transactions),
         total_sales: parseFloat(salesResult.rows[0].total_sales),
@@ -126,31 +133,27 @@ export const getDailySales = async (
   try {
     const { start_date, end_date, limit = 30 } = req.query
 
-    // Default to last 30 days if no dates provided
-    const endDateValue = end_date || new Date().toISOString().split('T')[0]
-    const startDateValue = start_date || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    const endDateValue = end_date || jakartaToday()
+    const startDateValue = start_date || jakarta30DaysAgo()
 
     const result = await pool.query(
       `SELECT
-        DATE(completed_at) as date,
+        ${TX_DATE} as date,
         COUNT(*) as transactions,
         COALESCE(SUM(total), 0) as sales,
         COALESCE(AVG(total), 0) as average_sale,
-        COALESCE(SUM(discount_items + discount_global), 0) as total_discounts
+        COALESCE(SUM(COALESCE(discount_items,0) + COALESCE(discount_global,0)), 0) as total_discounts
        FROM transactions
-       WHERE status = 'completed'
-       AND DATE(completed_at) BETWEEN $1 AND $2
-       GROUP BY DATE(completed_at)
+       WHERE status IN ('completed', 'paid')
+       AND ${TX_DATE} BETWEEN $1 AND $2
+       GROUP BY ${TX_DATE}
        ORDER BY date DESC
        LIMIT $3`,
       [startDateValue, endDateValue, parseInt(limit as string)]
     )
 
     res.json(successResponse({
-      period: {
-        start_date: startDateValue,
-        end_date: endDateValue
-      },
+      period: { start_date: startDateValue, end_date: endDateValue },
       data: result.rows
     }))
   } catch (error) {
@@ -170,22 +173,21 @@ export const getMonthlySales = async (
   try {
     const { year, limit = 12 } = req.query
 
-    // Default to current year if not provided
     const yearValue = year || new Date().getFullYear()
 
     const result = await pool.query(
       `SELECT
-        EXTRACT(YEAR FROM completed_at) as year,
-        EXTRACT(MONTH FROM completed_at) as month,
-        TO_CHAR(completed_at, 'Month YYYY') as period,
+        EXTRACT(YEAR FROM ${TX_TS}) as year,
+        EXTRACT(MONTH FROM ${TX_TS}) as month,
+        TO_CHAR(${TX_TS}, 'Month YYYY') as period,
         COUNT(*) as transactions,
         COALESCE(SUM(total), 0) as sales,
         COALESCE(AVG(total), 0) as average_sale,
-        COALESCE(SUM(discount_items + discount_global), 0) as total_discounts
+        COALESCE(SUM(COALESCE(discount_items,0) + COALESCE(discount_global,0)), 0) as total_discounts
        FROM transactions
-       WHERE status = 'completed'
-       AND EXTRACT(YEAR FROM completed_at) = $1
-       GROUP BY EXTRACT(YEAR FROM completed_at), EXTRACT(MONTH FROM completed_at), TO_CHAR(completed_at, 'Month YYYY')
+       WHERE status IN ('completed', 'paid')
+       AND EXTRACT(YEAR FROM ${TX_TS}) = $1
+       GROUP BY EXTRACT(YEAR FROM ${TX_TS}), EXTRACT(MONTH FROM ${TX_TS}), TO_CHAR(${TX_TS}, 'Month YYYY')
        ORDER BY year DESC, month DESC
        LIMIT $2`,
       [yearValue, parseInt(limit as string)]
@@ -212,9 +214,8 @@ export const getBestProducts = async (
   try {
     const { start_date, end_date, limit = 10 } = req.query
 
-    // Default to last 30 days if no dates provided
-    const endDateValue = end_date || new Date().toISOString().split('T')[0]
-    const startDateValue = start_date || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    const endDateValue = end_date || jakartaToday()
+    const startDateValue = start_date || jakarta30DaysAgo()
 
     const result = await pool.query(
       `SELECT
@@ -229,8 +230,8 @@ export const getBestProducts = async (
        JOIN transactions t ON ti.transaction_id = t.id
        LEFT JOIN products p ON ti.product_id = p.id
        LEFT JOIN categories c ON p.category_id = c.id
-       WHERE t.status = 'completed'
-       AND DATE(t.completed_at) BETWEEN $1 AND $2
+       WHERE t.status IN ('completed', 'paid')
+       AND DATE((COALESCE(t.completed_at, t.paid_at, t.updated_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jakarta') BETWEEN $1 AND $2
        GROUP BY ti.product_id, ti.product_name, p.image_url, c.name
        ORDER BY total_quantity DESC
        LIMIT $3`,
@@ -238,10 +239,7 @@ export const getBestProducts = async (
     )
 
     res.json(successResponse({
-      period: {
-        start_date: startDateValue,
-        end_date: endDateValue
-      },
+      period: { start_date: startDateValue, end_date: endDateValue },
       data: result.rows
     }))
   } catch (error) {
@@ -261,9 +259,8 @@ export const getTopCustomers = async (
   try {
     const { start_date, end_date, limit = 10 } = req.query
 
-    // Default to last 30 days if no dates provided
-    const endDateValue = end_date || new Date().toISOString().split('T')[0]
-    const startDateValue = start_date || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    const endDateValue = end_date || jakartaToday()
+    const startDateValue = start_date || jakarta30DaysAgo()
 
     const result = await pool.query(
       `SELECT
@@ -277,8 +274,8 @@ export const getTopCustomers = async (
         COALESCE(AVG(t.total), 0) as average_transaction
        FROM customers c
        JOIN transactions t ON c.id = t.customer_id
-       WHERE t.status = 'completed'
-       AND DATE(t.completed_at) BETWEEN $1 AND $2
+       WHERE t.status IN ('completed', 'paid')
+       AND DATE((COALESCE(t.completed_at, t.paid_at, t.updated_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jakarta') BETWEEN $1 AND $2
        GROUP BY c.id, c.name, c.phone_number, c.email, c.avatar_url
        ORDER BY total_spending DESC
        LIMIT $3`,
@@ -286,10 +283,7 @@ export const getTopCustomers = async (
     )
 
     res.json(successResponse({
-      period: {
-        start_date: startDateValue,
-        end_date: endDateValue
-      },
+      period: { start_date: startDateValue, end_date: endDateValue },
       data: result.rows
     }))
   } catch (error) {
@@ -309,9 +303,8 @@ export const getSalesByCategory = async (
   try {
     const { start_date, end_date } = req.query
 
-    // Default to last 30 days if no dates provided
-    const endDateValue = end_date || new Date().toISOString().split('T')[0]
-    const startDateValue = start_date || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    const endDateValue = end_date || jakartaToday()
+    const startDateValue = start_date || jakarta30DaysAgo()
 
     const result = await pool.query(
       `SELECT
@@ -319,24 +312,21 @@ export const getSalesByCategory = async (
         c.name as category_name,
         c.icon as category_icon,
         COUNT(DISTINCT ti.transaction_id) as total_transactions,
-        SUM(ti.quantity) as total_quantity,
+        COALESCE(SUM(ti.quantity), 0) as total_quantity,
         COALESCE(SUM(ti.total), 0) as total_sales
        FROM categories c
        LEFT JOIN products p ON c.id = p.category_id
        LEFT JOIN transaction_items ti ON p.id = ti.product_id
-       LEFT JOIN transactions t ON ti.transaction_id = t.id
-       WHERE t.status = 'completed'
-       AND DATE(t.completed_at) BETWEEN $1 AND $2
+       LEFT JOIN transactions t ON ti.transaction_id = t.id AND t.status IN ('completed', 'paid')
+         AND DATE((COALESCE(t.completed_at, t.paid_at, t.updated_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jakarta') BETWEEN $1 AND $2
        GROUP BY c.id, c.name, c.icon
+       HAVING COALESCE(SUM(ti.total), 0) > 0
        ORDER BY total_sales DESC`,
       [startDateValue, endDateValue]
     )
 
     res.json(successResponse({
-      period: {
-        start_date: startDateValue,
-        end_date: endDateValue
-      },
+      period: { start_date: startDateValue, end_date: endDateValue },
       data: result.rows
     }))
   } catch (error) {
@@ -356,9 +346,8 @@ export const getCashierPerformance = async (
   try {
     const { start_date, end_date, limit = 10 } = req.query
 
-    // Default to last 30 days if no dates provided
-    const endDateValue = end_date || new Date().toISOString().split('T')[0]
-    const startDateValue = start_date || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    const endDateValue = end_date || jakartaToday()
+    const startDateValue = start_date || jakarta30DaysAgo()
 
     const result = await pool.query(
       `SELECT
@@ -370,8 +359,8 @@ export const getCashierPerformance = async (
         COALESCE(AVG(t.total), 0) as average_transaction
        FROM users u
        JOIN transactions t ON u.id = t.cashier_id
-       WHERE t.status = 'completed'
-       AND DATE(t.completed_at) BETWEEN $1 AND $2
+       WHERE t.status IN ('completed', 'paid')
+       AND DATE((COALESCE(t.completed_at, t.paid_at, t.updated_at) AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Jakarta') BETWEEN $1 AND $2
        GROUP BY u.id, u.full_name, u.avatar_url
        ORDER BY total_sales DESC
        LIMIT $3`,
@@ -379,10 +368,7 @@ export const getCashierPerformance = async (
     )
 
     res.json(successResponse({
-      period: {
-        start_date: startDateValue,
-        end_date: endDateValue
-      },
+      period: { start_date: startDateValue, end_date: endDateValue },
       data: result.rows
     }))
   } catch (error) {
