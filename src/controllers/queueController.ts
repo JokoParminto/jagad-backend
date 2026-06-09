@@ -16,6 +16,25 @@ export interface QueueItemSnapshot {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
+ * Get current active shift id + next queue_number for that shift.
+ * queue_number resets to 1 every new shift.
+ */
+async function getNextQueueNumber(client: any): Promise<{ shiftId: string | null; queueNumber: number }> {
+  const shiftResult = await client.query(
+    `SELECT id FROM shifts WHERE status = 'active' ORDER BY opened_at DESC LIMIT 1`,
+  )
+  if (shiftResult.rows.length === 0) {
+    return { shiftId: null, queueNumber: 1 }
+  }
+  const shiftId = shiftResult.rows[0].id
+  const countResult = await client.query(
+    `SELECT COALESCE(MAX(queue_number), 0) + 1 AS next_num FROM preparation_queue WHERE shift_id = $1`,
+    [shiftId],
+  )
+  return { shiftId, queueNumber: countResult.rows[0].next_num }
+}
+
+/**
  * Build items snapshot from request body items.
  * All items start as 'pending' unless status is explicitly passed.
  */
@@ -46,10 +65,11 @@ export async function enqueueHoldOrder(
   items: any[],
   orderedAt?: Date,
 ): Promise<void> {
+  const { shiftId, queueNumber } = await getNextQueueNumber(client)
   await client.query(
     `INSERT INTO preparation_queue
-       (order_ref_id, order_type, transaction_number, customer_name, items, is_active, ordered_at)
-     VALUES ($1, 'hold', $2, $3, $4, true, $5)
+       (order_ref_id, order_type, transaction_number, customer_name, items, is_active, ordered_at, shift_id, queue_number)
+     VALUES ($1, 'hold', $2, $3, $4, true, $5, $6, $7)
      ON CONFLICT DO NOTHING`,
     [
       refId,
@@ -57,6 +77,8 @@ export async function enqueueHoldOrder(
       customerName || 'Tanpa Nama',
       JSON.stringify(buildItemsSnapshot(items)),
       orderedAt || new Date(),
+      shiftId,
+      queueNumber,
     ],
   )
 }
@@ -71,15 +93,18 @@ export async function enqueuePaidOrder(
   customerName: string,
   items: any[],
 ): Promise<void> {
+  const { shiftId, queueNumber } = await getNextQueueNumber(client)
   await client.query(
     `INSERT INTO preparation_queue
-       (order_ref_id, order_type, transaction_number, customer_name, items, is_active, ordered_at)
-     VALUES ($1, 'paid', $2, $3, $4, true, CURRENT_TIMESTAMP)`,
+       (order_ref_id, order_type, transaction_number, customer_name, items, is_active, ordered_at, shift_id, queue_number)
+     VALUES ($1, 'paid', $2, $3, $4, true, CURRENT_TIMESTAMP, $5, $6)`,
     [
       refId,
       transactionNumber,
       customerName || 'Tanpa Nama',
       JSON.stringify(buildItemsSnapshot(items)),
+      shiftId,
+      queueNumber,
     ],
   )
 }
@@ -260,6 +285,7 @@ export const getQueue = async (
     const result = await pool.query(
       `SELECT id, order_ref_id, order_type, transaction_number,
               customer_name, items, is_active,
+              queue_number, shift_id,
               ordered_at, created_at, updated_at
        FROM preparation_queue
        WHERE is_active = true

@@ -188,6 +188,7 @@ export const heldOrderController = {
       // ✅ Get transactions with status='open' only
       const result = await pool.query(
         `SELECT t.id,
+                t.transaction_number,
                 t.customer_id,
                 t.customer_is_member,
                 t.subtotal,
@@ -208,6 +209,7 @@ export const heldOrderController = {
                     'product_name', ti.product_name,
                     'product_price', ti.product_price,
                     'quantity', ti.quantity,
+                    'notes', ti.notes,
                     'discount_amount', ti.discount_amount,
                     'discount_type', ti.discount_type,
                     'subtotal', ti.subtotal,
@@ -218,7 +220,7 @@ export const heldOrderController = {
          LEFT JOIN customers c ON t.customer_id = c.id
          LEFT JOIN transaction_items ti ON t.id = ti.transaction_id
          WHERE t.status = 'open'
-         GROUP BY t.id, t.customer_id, t.customer_is_member, t.subtotal, t.discount_items, t.discount_global,
+         GROUP BY t.id, t.transaction_number, t.customer_id, t.customer_is_member, t.subtotal, t.discount_items, t.discount_global,
                   t.discount_global_type, t.total, t.amount_paid, t.remaining_amount, t.status,
                   t.created_at, t.updated_at, c.name
          ORDER BY t.created_at DESC`,
@@ -282,6 +284,7 @@ export const heldOrderController = {
 
       const result = await pool.query(
         `SELECT t.id,
+                t.transaction_number,
                 t.customer_id,
                 t.customer_is_member,
                 t.subtotal,
@@ -302,6 +305,7 @@ export const heldOrderController = {
                     'product_name', ti.product_name,
                     'product_price', ti.product_price,
                     'quantity', ti.quantity,
+                    'notes', ti.notes,
                     'discount_amount', ti.discount_amount,
                     'discount_type', ti.discount_type,
                     'subtotal', ti.subtotal,
@@ -312,7 +316,7 @@ export const heldOrderController = {
          LEFT JOIN customers c ON t.customer_id = c.id
          LEFT JOIN transaction_items ti ON t.id = ti.transaction_id
          WHERE t.id = $1 AND t.status = 'open'
-         GROUP BY t.id, t.customer_id, t.customer_is_member, t.subtotal, t.discount_items, t.discount_global,
+         GROUP BY t.id, t.transaction_number, t.customer_id, t.customer_is_member, t.subtotal, t.discount_items, t.discount_global,
                   t.discount_global_type, t.total, t.amount_paid, t.remaining_amount, t.status,
                   t.created_at, t.updated_at, c.name`,
         [id],

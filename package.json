@@ -1,7 +1,7 @@
 {
-  "name": "sederek-kasir-backend",
+  "name": "jagad-kasir-backend",
   "version": "1.0.0",
-  "description": "Backend API for Sederek Kasir POS Application",
+  "description": "Backend API for Jagad Kasir POS Application",
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon src/server.ts",
