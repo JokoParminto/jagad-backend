@@ -21,6 +21,11 @@ echo "============================================="
 
 cd "$APP_DIR"
 
+# ── 0. Git pull ───────────────────────────────────────────────────────────────
+info "[0/6] Git pull latest code..."
+git pull
+ok "Code updated"
+
 # ── 1. Cek .env ──────────────────────────────────────────────────────────────
 info "Checking .env..."
 if [ ! -f ".env" ]; then
@@ -49,13 +54,13 @@ fi
 
 # ── 3. npm install ───────────────────────────────────────────────────────────
 echo ""
-info "[1/5] npm install..."
+info "[1/6] npm install..."
 npm install
 ok "Dependencies installed"
 
 # ── 4. Build TypeScript ──────────────────────────────────────────────────────
 echo ""
-info "[2/5] Building TypeScript..."
+info "[2/6] Building TypeScript..."
 npm run build
 ok "Build complete → dist/"
 
@@ -65,13 +70,13 @@ ok "uploads/ directory ready"
 
 # ── 6. Run migrations ────────────────────────────────────────────────────────
 echo ""
-info "[3/5] Running database migrations..."
+info "[3/6] Running database migrations..."
 npm run migrate
 ok "Migrations done"
 
 # ── 7. Seed base data ────────────────────────────────────────────────────────
 echo ""
-info "[4/5] Seeding base data..."
+info "[4/6] Seeding base data..."
 SEED_FILE="$APP_DIR/src/database/seed_base.sql"
 if [ -f "$SEED_FILE" ]; then
   # Load DB vars from .env
@@ -91,24 +96,23 @@ else
   info "seed_base.sql tidak ditemukan, skip seed"
 fi
 
-# ── 8. PM2 start / restart ───────────────────────────────────────────────────
+# ── 8. PM2 start / restart via ecosystem ────────────────────────────────────
 echo ""
-info "[5/5] Starting server via PM2..."
+info "[5/6] Starting server via PM2 ecosystem..."
+mkdir -p logs
 if pm2 list | grep -q "$APP_NAME"; then
-  pm2 restart "$APP_NAME" --update-env
-  ok "PM2 restarted: $APP_NAME"
+  pm2 reload ecosystem.config.js --env production
+  ok "PM2 reloaded (zero-downtime): $APP_NAME"
 else
-  pm2 start dist/server.js \
-    --name "$APP_NAME" \
-    --node-args="--max-old-space-size=512" \
-    --restart-delay=3000 \
-    --max-restarts=10
+  pm2 start ecosystem.config.js --env production
   ok "PM2 started: $APP_NAME"
 fi
 
+info "[6/6] Done"
+
 pm2 save --force
 
-# ── 8. Summary ───────────────────────────────────────────────────────────────
+# ── 6. Summary ───────────────────────────────────────────────────────────────
 echo ""
 echo "============================================="
 echo -e "  ${GREEN}Deploy selesai!${NC}"
