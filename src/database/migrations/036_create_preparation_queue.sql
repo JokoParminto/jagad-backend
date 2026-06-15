@@ -16,6 +16,23 @@ CREATE TABLE IF NOT EXISTS preparation_queue (
   updated_at      TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Backfill: jika tabel sudah ada dari versi lama tanpa kolom status
+ALTER TABLE preparation_queue ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'waiting';
+ALTER TABLE preparation_queue ADD COLUMN IF NOT EXISTS transaction_number VARCHAR(60);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'preparation_queue_status_check'
+      AND conrelid = 'preparation_queue'::regclass
+  ) THEN
+    ALTER TABLE preparation_queue
+      ADD CONSTRAINT preparation_queue_status_check
+      CHECK (status IN ('waiting', 'making', 'ready'));
+  END IF;
+END$$;
+
 CREATE INDEX IF NOT EXISTS idx_preparation_queue_status     ON preparation_queue(status);
 CREATE INDEX IF NOT EXISTS idx_preparation_queue_ordered_at ON preparation_queue(ordered_at);
 CREATE INDEX IF NOT EXISTS idx_preparation_queue_ref        ON preparation_queue(order_ref_id);
