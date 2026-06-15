@@ -475,6 +475,7 @@ export interface CreatePrinterRequest {
   font_size?: number
   is_default?: boolean
   auto_print?: boolean
+  device_path?: string
 }
 
 export interface UpdatePrinterRequest {
@@ -487,6 +488,7 @@ export interface UpdatePrinterRequest {
   status?: 'active' | 'inactive' | 'offline'
   is_default?: boolean
   auto_print?: boolean
+  device_path?: string
 }
 
 export interface CreatePrinterTemplateRequest {

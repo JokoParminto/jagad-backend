@@ -95,6 +95,7 @@ export const createPrinter = async (
       font_size = 12,
       is_default = false,
       auto_print = false,
+      device_path,
     }: CreatePrinterRequest = req.body;
 
     // Validation
@@ -129,8 +130,8 @@ export const createPrinter = async (
       `INSERT INTO printers (
          name, description, printer_type, connection_type,
          paper_width, font_size,
-         is_default, auto_print, status
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
+         is_default, auto_print, device_path, status
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
        RETURNING *`,
       [
         name,
@@ -141,6 +142,7 @@ export const createPrinter = async (
         font_size,
         is_default,
         auto_print,
+        device_path ?? null,
       ],
     );
 
@@ -212,11 +214,25 @@ export const updatePrinter = async (
       );
     }
 
-    const updateFields = Object.keys(updates)
+    const ALLOWED_COLUMNS = new Set([
+      'name', 'description', 'printer_type', 'connection_type',
+      'paper_width', 'font_size', 'status', 'is_default', 'auto_print', 'device_path',
+    ]);
+
+    const safeUpdates = Object.fromEntries(
+      Object.entries(updates).filter(([k, v]) => ALLOWED_COLUMNS.has(k) && v !== undefined),
+    );
+
+    if (Object.keys(safeUpdates).length === 0) {
+      res.json(successResponse(existingPrinter.rows[0], "Tidak ada perubahan"));
+      return;
+    }
+
+    const updateFields = Object.keys(safeUpdates)
       .map((key, idx) => `${key} = $${idx + 1}`)
       .join(", ");
 
-    const values = Object.values(updates);
+    const values = Object.values(safeUpdates);
     values.push(id);
 
     const result = await pool.query(
