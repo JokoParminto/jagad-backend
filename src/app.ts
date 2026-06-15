@@ -41,11 +41,10 @@ app.use(`/api/${config.apiVersion}`, routes)
 
 // Health check
 app.get('/health', (_req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    environment: config.env
-  })
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), environment: config.env })
+})
+app.get('/api', (_req, res) => {
+  res.json({ status: 'ok', app: 'POS JAGAD API', version: config.apiVersion })
 })
 
 // 404 handler
