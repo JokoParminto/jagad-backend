@@ -12,10 +12,12 @@ const app = express()
 // Security middleware
 app.use(helmet())
 app.disable('etag')  // Disable ETag to prevent 304 Not Modified responses
-app.use(cors({
+const corsOptions = {
   origin: true,
   credentials: true,
-}))
+}
+app.options('*', cors(corsOptions))
+app.use(cors(corsOptions))
 
 // Rate limiting (only apply in production or if explicitly needed)
 // For single coffee shop setup: rate limiting is disabled
