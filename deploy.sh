@@ -50,7 +50,7 @@ fi
 # ── 3. npm install ───────────────────────────────────────────────────────────
 echo ""
 info "[1/5] npm install..."
-npm install --omit=dev
+npm install
 ok "Dependencies installed"
 
 # ── 4. Build TypeScript ──────────────────────────────────────────────────────
