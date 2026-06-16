@@ -79,7 +79,7 @@ export const recordSplitBillPayment = async (
 
         for (const item of paid_items) {
           const itemCheck = await client.query(
-            "SELECT id, subtotal, quantity, payment_status FROM transaction_items WHERE id = $1 AND transaction_id = $2",
+            "SELECT id, subtotal, total, quantity, payment_status FROM transaction_items WHERE id = $1 AND transaction_id = $2",
             [item.item_id, transactionId],
           );
 
@@ -102,11 +102,13 @@ export const recordSplitBillPayment = async (
             );
           }
 
-          // Validate price hasn't changed - CRITICAL for item-based split bill
-          if (item.item_subtotal !== Number(dbItem.subtotal)) {
+          // Validate price hasn't changed — compare against total (base + addons - discount)
+          // held orders store total = base + addons, subtotal = base only
+          const expectedAmount = Number(dbItem.total)
+          if (Math.round(item.item_subtotal) !== Math.round(expectedAmount)) {
             throw new AppError(
               "PRICE_CHANGED",
-              `Item ${item.item_id} price has changed. Cannot pay. Original: ${dbItem.subtotal}, Provided: ${item.item_subtotal}`,
+              `Item ${item.item_id} price has changed. Cannot pay. Original: ${dbItem.total}, Provided: ${item.item_subtotal}`,
               400,
             );
           }
