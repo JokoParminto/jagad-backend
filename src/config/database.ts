@@ -1,5 +1,13 @@
-import { Pool, QueryResult } from 'pg'
+import { Pool, QueryResult, types } from 'pg'
 import { config } from './env'
+
+// TIMESTAMP WITHOUT TIME ZONE (OID 1114) — session tz is Asia/Jakarta,
+// so all stored values are WIB wall-clock times. Parse explicitly as +07:00
+// so result is a correct UTC Date regardless of Node.js process timezone.
+types.setTypeParser(1114, (val: string) => {
+  if (!val) return null
+  return new Date(val.replace(' ', 'T') + '+07:00')
+})
 
 export const pool = new Pool({
   host: config.database.host,
