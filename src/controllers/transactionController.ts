@@ -2121,6 +2121,13 @@ export const getReportsByShift = async (
         s.closed_at,
         s.status,
         COUNT(t.id) as transaction_count,
+        COALESCE(
+          (SELECT SUM(ti.quantity)
+           FROM transaction_items ti
+           JOIN transactions t2 ON ti.transaction_id = t2.id
+           WHERE t2.shift_id = s.id AND t2.status IN ('paid', 'completed')
+          ), 0
+        )::int as total_items,
         COALESCE(SUM(CASE WHEN t.status IN ('paid', 'completed') THEN t.total ELSE 0 END), 0) as total_sales,
         COALESCE(SUM(CASE WHEN t.status IN ('paid', 'completed') THEN COALESCE(t.discount_items, 0) + COALESCE(t.discount_global, 0) ELSE 0 END), 0) as total_discount,
         COALESCE(
