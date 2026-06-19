@@ -17,9 +17,5 @@ CREATE INDEX IF NOT EXISTS idx_add_ons_sort ON add_ons(sort_order);
 
 -- Insert default add-ons (optional sample data)
 INSERT INTO add_ons (name, price, description, sort_order) VALUES
-  ('Extra Shot Espresso', 7000, 'Tambahan 1 shot espresso', 1),
-  ('Whipped Cream', 5000, 'Tambahan whipped cream', 2),
-  ('Cinnamon', 2000, 'Taburan cinnamon', 3),
-  ('Caramel Drizzle', 3000, 'Sirop caramel', 4),
-  ('Chocolate Sauce', 3000, 'Saus coklat', 5)
+  ('Extra Shot Espresso', 7000, 'Tambahan 1 shot espresso', 1)
 ON CONFLICT DO NOTHING;
