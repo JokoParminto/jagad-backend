@@ -190,7 +190,12 @@ export const updateCustomer = async (
 ) => {
   try {
     const { id } = req.params
-    const { name, phone_number, email, avatar_url, is_member } = req.body
+    const raw = req.body
+    const name        = raw.name?.trim()         || null
+    const phone_number = raw.phone_number?.trim() || null
+    const email       = raw.email?.trim()         || null
+    const avatar_url  = raw.avatar_url?.trim()    || null
+    const is_member   = raw.is_member
 
     // Check if customer exists
     const existingCustomer = await pool.query(
