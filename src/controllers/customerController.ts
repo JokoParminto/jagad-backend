@@ -15,14 +15,14 @@ export const getCustomers = async (
 ) => {
   try {
     const {
-      page = 1,
-      limit = 20,
+      page,
+      limit,
       search,
       sortBy = 'name',
       sortOrder = 'asc'
     } = req.query as any
 
-    const offset = (parseInt(page) - 1) * parseInt(limit)
+    const isPaginated = limit !== undefined
 
     // Build WHERE clause
     const conditions: string[] = []
@@ -37,42 +37,45 @@ export const getCustomers = async (
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
-    // Get total count
-    const countQuery = `
-      SELECT COUNT(*) as total
-      FROM customers
-      ${whereClause}
-    `
-    const countResult = await pool.query(countQuery, params)
-    const total = parseInt(countResult.rows[0].total)
-
-    // Get customers
     const validSortColumns = ['name', 'phone_number', 'total_spending', 'total_transactions', 'created_at']
     const sortColumn = validSortColumns.includes(sortBy as string) ? sortBy : 'name'
     const sortDirection = sortOrder === 'desc' ? 'DESC' : 'ASC'
 
-    params.push(parseInt(limit), offset)
+    let query: string
+    let meta: Record<string, any> | undefined
 
-    const query = `
-      SELECT *
-      FROM customers
-      ${whereClause}
-      ORDER BY ${sortColumn} ${sortDirection}
-      LIMIT $${paramIndex++} OFFSET $${paramIndex}
-    `
+    if (isPaginated) {
+      const parsedLimit = parseInt(limit)
+      const parsedPage = parseInt(page ?? 1)
+      const offset = (parsedPage - 1) * parsedLimit
+
+      const countResult = await pool.query(
+        `SELECT COUNT(*) as total FROM customers ${whereClause}`,
+        params
+      )
+      const total = parseInt(countResult.rows[0].total)
+
+      params.push(parsedLimit, offset)
+      query = `
+        SELECT *
+        FROM customers
+        ${whereClause}
+        ORDER BY ${sortColumn} ${sortDirection}
+        LIMIT $${paramIndex++} OFFSET $${paramIndex}
+      `
+      meta = { page: parsedPage, limit: parsedLimit, total, totalPages: Math.ceil(total / parsedLimit) }
+    } else {
+      query = `
+        SELECT *
+        FROM customers
+        ${whereClause}
+        ORDER BY ${sortColumn} ${sortDirection}
+      `
+    }
 
     const result = await pool.query(query, params)
 
-    res.json(successResponse(
-      result.rows,
-      'success',
-      {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        totalPages: Math.ceil(total / parseInt(limit))
-      }
-    ))
+    res.json(successResponse(result.rows, 'success', meta))
   } catch (error) {
     next(error)
   }
