@@ -42,7 +42,7 @@ export const getCustomers = async (
     const sortDirection = sortOrder === 'desc' ? 'DESC' : 'ASC'
 
     let query: string
-    let meta: Record<string, any> | undefined
+    let meta: { page: number; limit: number; total: number; totalPages: number } | undefined
 
     if (isPaginated) {
       const parsedLimit = parseInt(limit)
