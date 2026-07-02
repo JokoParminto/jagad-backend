@@ -2102,7 +2102,7 @@ export const getReportsByShift = async (
   next: NextFunction,
 ) => {
   try {
-    const { start_date, end_date } = req.query;
+    const { start_date, end_date, shift_id } = req.query;
     const userId = req.user?.id;
     const userRole = req.user?.role;
 
@@ -2156,6 +2156,13 @@ export const getReportsByShift = async (
     if (userRole === "kasir") {
       query += ` AND s.cashier_id = $${paramIndex}`;
       params.push(userId);
+      paramIndex++;
+    }
+
+    // Shift filter
+    if (shift_id) {
+      query += ` AND s.id = $${paramIndex}`;
+      params.push(shift_id);
       paramIndex++;
     }
 

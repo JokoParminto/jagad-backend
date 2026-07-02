@@ -208,11 +208,15 @@ export const heldOrderController = {
                     'product_id', ti.product_id,
                     'product_name', ti.product_name,
                     'product_price', ti.product_price,
+                    'original_price', ti.original_price,
+                    'member_price', ti.member_price,
+                    'is_member_price', ti.is_member_price,
                     'quantity', ti.quantity,
                     'notes', ti.notes,
                     'discount_amount', ti.discount_amount,
                     'discount_type', ti.discount_type,
                     'subtotal', ti.subtotal,
+                    'total', ti.total,
                     'payment_status', ti.payment_status
                   ) ORDER BY ti.created_at
                 ) FILTER (WHERE ti.id IS NOT NULL) AS items
